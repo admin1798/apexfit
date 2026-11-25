@@ -2,9 +2,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Lock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CoachTab } from './components/coach/CoachTab';
+import { QuickAiBar } from './components/coach/QuickAiBar';
 import { DashboardTab } from './components/dashboard/DashboardTab';
 import { BottomNav, SidebarNav, TopHeader, type AppTab } from './components/layout/Navigation';
 import { NutritionTab } from './components/nutrition/NutritionTab';
+import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
 import { ProgressTab } from './components/progress/ProgressTab';
 import { RecoveryTab } from './components/recovery/RecoveryTab';
 import { ReportsTab } from './components/reports/ReportsTab';
@@ -127,6 +129,10 @@ function ApexFitShell() {
     );
   }
 
+  if (ready && (!profile || !profile.onboardingCompleted)) {
+    return <OnboardingWizard onCompleted={() => setActiveTab('dashboard')} />;
+  }
+
   if (profile?.pinHash && !unlocked) {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-[#101211] p-4">
@@ -213,10 +219,20 @@ function ApexFitShell() {
 
           {activeTab === 'progress' && <ProgressTab />}
           {activeTab === 'recovery' && <RecoveryTab />}
-          {activeTab === 'coach' && <CoachTab />}
+          {activeTab === 'coach' && (
+            <CoachTab workoutBridge={{ activeDraft, onUpdateDraft: setActiveDraft }} />
+          )}
           {activeTab === 'reports' && <ReportsTab />}
         </main>
       </div>
+
+      {(activeTab === 'dashboard' || activeTab === 'workouts' || activeTab === 'nutrition') &&
+        !isWorkoutSheetOpen && (
+          <QuickAiBar
+            contextMode={activeTab === 'nutrition' ? 'nutrition' : 'workout'}
+            workoutBridge={{ activeDraft, onUpdateDraft: setActiveDraft }}
+          />
+        )}
 
       <BottomNav
         activeTab={activeTab}

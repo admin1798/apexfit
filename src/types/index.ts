@@ -8,7 +8,22 @@ export type FoodUnit = 'serving' | '100g' | 'piece' | 'bowl' | 'cup' | 'custom';
 
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
 
-export type FitnessGoal = 'cut' | 'maintain' | 'lean_bulk';
+export type FitnessGoal = 'cut' | 'lean_bulk' | 'recomp' | 'maintain';
+
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+
+export type DietType =
+  | 'non_veg'
+  | 'eggetarian'
+  | 'vegetarian'
+  | 'vegan'
+  | 'bengali_indian';
+
+export type PreferredSplit =
+  | 'push_pull_legs'
+  | 'upper_lower'
+  | 'full_body'
+  | 'bro_split';
 
 export type Sex = 'male' | 'female';
 
@@ -80,6 +95,11 @@ export interface UserProfile {
   goalWeightKg: number;
   activityLevel: ActivityLevel;
   goal: FitnessGoal;
+  weeklyRateKg?: number;
+  experienceLevel?: ExperienceLevel;
+  dietType?: DietType;
+  preferredWorkoutSplit?: PreferredSplit;
+  onboardingCompleted?: boolean;
   unitSystem: UnitSystem;
   calorieTarget: number;
   proteinTarget: number;
@@ -286,9 +306,20 @@ export interface RecoveryLogEntry {
   note?: string;
 }
 
+export type CoachMutationType =
+  | 'log_meal'
+  | 'edit_meal'
+  | 'delete_meal'
+  | 'log_workout_sets'
+  | 'swap_exercise'
+  | 'modify_routine'
+  | 'update_routine_target';
+
 export interface CoachProposedAction {
-  type: 'create_routine' | 'update_targets';
+  type: 'create_routine' | 'update_targets' | CoachMutationType;
   label: string;
+  requiresConfirmation?: boolean;
+  summary?: string;
   payload: unknown;
 }
 

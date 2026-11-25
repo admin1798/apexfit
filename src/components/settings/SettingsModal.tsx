@@ -24,7 +24,17 @@ import { enqueueSyncMutation, flushSyncQueue } from '../../services/syncService'
 import { sha256Hex } from '../../services/crypto';
 import { displayWeight, inputToKg, weightLabel } from '../../services/units';
 import { AI_PROVIDERS } from '../../services/ai/providers';
-import type { AIProviderId, ActivityLevel, FitnessGoal, Sex, UnitSystem, UserProfile } from '../../types';
+import type {
+  AIProviderId,
+  ActivityLevel,
+  DietType,
+  ExperienceLevel,
+  FitnessGoal,
+  PreferredSplit,
+  Sex,
+  UnitSystem,
+  UserProfile,
+} from '../../types';
 import { ConfirmDialog, ModalShell } from '../ui/Overlay';
 import { Badge, Button, Input, Select } from '../ui/primitives';
 import { useToast } from '../ui/toastContext';
@@ -70,6 +80,16 @@ function SettingsModalForm({
   );
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>(profile.activityLevel);
   const [goal, setGoal] = useState<FitnessGoal>(profile.goal);
+  const [weeklyRateKg, setWeeklyRateKg] = useState<number>(
+    profile.weeklyRateKg ?? GOAL_CONFIG[profile.goal]?.defaultWeeklyRateKg ?? 0
+  );
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
+    profile.experienceLevel ?? 'intermediate'
+  );
+  const [dietType, setDietType] = useState<DietType>(profile.dietType ?? 'bengali_indian');
+  const [preferredWorkoutSplit, setPreferredWorkoutSplit] = useState<PreferredSplit>(
+    profile.preferredWorkoutSplit ?? 'push_pull_legs'
+  );
   const [waterGoalMl, setWaterGoalMl] = useState(String(profile.waterGoalMl));
   const [stepsGoal, setStepsGoal] = useState(String(profile.stepsGoal ?? 8500));
   const [sleepGoalHours, setSleepGoalHours] = useState(String(profile.sleepGoalHours ?? 7.5));
@@ -102,6 +122,7 @@ function SettingsModalForm({
     weightKg: weightKgNum,
     activityLevel,
     goal,
+    weeklyRateKg,
   });
 
   async function handleSaveSettings(e: React.FormEvent) {
@@ -121,6 +142,10 @@ function SettingsModalForm({
       goalWeightKg: Math.round(goalWeightKgNum * 10) / 10,
       activityLevel,
       goal,
+      weeklyRateKg,
+      experienceLevel,
+      dietType,
+      preferredWorkoutSplit,
       calorieTarget: computed.calorieTarget,
       proteinTarget: computed.proteinTarget,
       carbsTarget: computed.carbsTarget,
@@ -181,9 +206,21 @@ function SettingsModalForm({
         onClose={onClose}
       >
         <form onSubmit={handleSaveSettings} className="space-y-4">
-          {/* Profile & Units */}
+          {/* My Profile & Units */}
           <section className="space-y-3 rounded-3xl border border-[#252B28] bg-[#1D221F] p-4">
-            <h3 className="text-sm font-bold text-[#F3F5F2]">Profile &amp; Units</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#F3F5F2]">My Profile &amp; Units</h3>
+              <button
+                type="button"
+                onClick={async () => {
+                  await db.profile.update(DEFAULT_PROFILE_ID, { onboardingCompleted: false });
+                  onClose();
+                }}
+                className="text-xs font-semibold text-[#B7F36B] hover:underline"
+              >
+                Re-run Setup Wizard
+              </button>
+            </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -256,6 +293,39 @@ function SettingsModalForm({
                 onChange={(e) => setGoalWeightDisplay(e.target.value)}
               />
             </div>
+
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <Select
+                label="Experience"
+                value={experienceLevel}
+                onChange={(e) => setExperienceLevel(e.target.value as ExperienceLevel)}
+              >
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </Select>
+              <Select
+                label="Preferred Split"
+                value={preferredWorkoutSplit}
+                onChange={(e) => setPreferredWorkoutSplit(e.target.value as PreferredSplit)}
+              >
+                <option value="push_pull_legs">Push / Pull / Legs</option>
+                <option value="upper_lower">Upper / Lower</option>
+                <option value="full_body">Full Body</option>
+                <option value="bro_split">Bro Split</option>
+              </Select>
+              <Select
+                label="Diet Preference"
+                value={dietType}
+                onChange={(e) => setDietType(e.target.value as DietType)}
+              >
+                <option value="bengali_indian">Bengali / Indian</option>
+                <option value="non_veg">Non-Veg</option>
+                <option value="eggetarian">Eggetarian</option>
+                <option value="vegetarian">Vegetarian</option>
+                <option value="vegan">Vegan</option>
+              </Select>
+            </div>
           </section>
 
           {/* Nutrition Target Calculator */}
@@ -279,21 +349,35 @@ function SettingsModalForm({
               ))}
             </Select>
 
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
               {(Object.keys(GOAL_CONFIG) as FitnessGoal[]).map((g) => (
                 <button
                   key={g}
                   type="button"
-                  onClick={() => setGoal(g)}
+                  onClick={() => {
+                    setGoal(g);
+                    setWeeklyRateKg(GOAL_CONFIG[g].defaultWeeklyRateKg);
+                  }}
                   className={`min-h-[42px] rounded-xl px-2 text-xs font-semibold ${
                     goal === g
                       ? 'bg-[#B7F36B] text-[#101211]'
                       : 'border border-[#303832] bg-[#171A18] text-[#A1AAA3]'
                   }`}
                 >
-                  {g === 'cut' ? 'Cut' : g === 'maintain' ? 'Maintain' : 'Lean Bulk'}
+                  {GOAL_CONFIG[g].shortLabel}
                 </button>
               ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#303832] bg-[#171A18] px-3 py-2">
+              <span className="text-xs text-[#A1AAA3]">Weekly Rate ({wUnit}/wk)</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={weeklyRateKg}
+                onChange={(e) => setWeeklyRateKg(parseFloat(e.target.value) || 0)}
+                className="min-h-[36px] w-20 rounded-lg border border-[#303832] bg-[#1D221F] text-center text-xs font-semibold text-[#F3F5F2]"
+              />
             </div>
 
             <div className="rounded-2xl border border-[#303832] bg-[#171A18] p-3">

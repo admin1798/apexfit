@@ -18,22 +18,24 @@ import { useEffect, useState } from 'react';
 import { db } from '../../db/database';
 import { DEFAULT_PROFILE_ID } from '../../db/seed';
 import {
+  executeConfirmedMutation,
+  type ActiveWorkoutBridge,
+} from '../../services/ai/actionExecutor';
+import {
   deleteMemory,
   syncBaselineMemories,
   upsertManualMemory,
 } from '../../services/ai/memoryService';
 import { runCoachTurn } from '../../services/ai/orchestrator';
 import { AI_PROVIDERS } from '../../services/ai/providers';
-import { enqueueSyncMutation } from '../../services/syncService';
 import type {
   CoachConversation,
   CoachMemory,
   CoachMessage,
   CoachMode,
   MemoryCategory,
-  Routine,
 } from '../../types';
-import { ConfirmDialog, ModalShell } from '../ui/Overlay';
+import { ModalShell } from '../ui/Overlay';
 import { Badge, Button, Card, Input, Select } from '../ui/primitives';
 import { useToast } from '../ui/toastContext';
 
@@ -47,15 +49,15 @@ const MODES: Array<{ id: CoachMode; label: string }> = [
 
 const SUGGESTED_PROMPTS: Record<CoachMode, string[]> = {
   workout: [
+    'Log 3 sets of Bench Press: 60kg x 10, 65kg x 8, 70kg x 6',
+    'Swap Barbell Row for Lat Pulldown in my Pull routine',
     'Analyze my last workout',
     'What should I train today?',
-    'Should I increase my bench press weight?',
-    "Generate next week's workout",
   ],
   nutrition: [
+    'Log 2 rotis, 1 bowl masoor dal, and 150g chicken kosha for lunch',
     'Help me reach my protein target',
     'What should I eat tonight?',
-    'What is the cheapest way to hit my protein?',
   ],
   recovery: [
     'Am I recovering properly?',
@@ -128,14 +130,18 @@ function FormattedCoachText({ text }: { text: string }) {
   );
 }
 
-export function CoachTab() {
+interface CoachTabProps {
+  workoutBridge?: ActiveWorkoutBridge;
+}
+
+export function CoachTab({ workoutBridge }: CoachTabProps) {
   const [mode, setMode] = useState<CoachMode>('workout');
   const [activeConvId, setActiveConvId] = useState<string>('');
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [lastErrorNotice, setLastErrorNotice] = useState<string | null>(null);
-  const [pendingApplyMsg, setPendingApplyMsg] = useState<CoachMessage | null>(null);
+  const [dismissedActions, setDismissedActions] = useState<Record<string, boolean>>({});
 
   // Conversation Drawer & Rename State
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -254,7 +260,6 @@ export function CoachTab() {
         };
         await db.coachMessages.put(userMsg);
 
-        // Auto-title conversation on first user message
         const existingConv = await db.coachConversations.get(convId);
         if (existingConv && existingConv.title.startsWith('New ')) {
           await db.coachConversations.update(convId, {
@@ -270,11 +275,23 @@ export function CoachTab() {
         conversationId: convId,
         mode,
         userPrompt: trimmed,
+        workoutBridge,
         onTokenChunk: (partial) => setStreamingText(partial),
       });
 
       if (reply.errorNote) {
         setLastErrorNotice(reply.errorNote);
+      }
+
+      if (reply.immediateToast) {
+        const toastData = reply.immediateToast;
+        showToast(toastData.message, 'success', {
+          label: 'Undo',
+          onClick: async () => {
+            await toastData.undo();
+            showToast('Action undone', 'info');
+          },
+        });
       }
 
       const botMsg: CoachMessage = {
@@ -305,17 +322,11 @@ export function CoachTab() {
     await sendPrompt(lastUser.content, true);
   }
 
-  async function handleConfirmApplyAction() {
-    if (!pendingApplyMsg?.proposedAction) return;
-    const action = pendingApplyMsg.proposedAction;
-    if (action.type === 'create_routine') {
-      const routine = action.payload as Routine;
-      await db.routines.put(routine);
-      await enqueueSyncMutation('routine', routine.id, 'upsert', routine);
-      await db.coachMessages.update(pendingApplyMsg.id, { actionApplied: true });
-      showToast(`Added "${routine.name}" to Programs`, 'success');
-    }
-    setPendingApplyMsg(null);
+  async function handleApplyInlineAction(msg: CoachMessage) {
+    if (!msg.proposedAction) return;
+    const res = await executeConfirmedMutation(msg.proposedAction);
+    await db.coachMessages.update(msg.id, { actionApplied: true });
+    showToast(res.message, 'success');
   }
 
   async function handleSaveMemory(e: React.FormEvent) {
@@ -338,7 +349,6 @@ export function CoachTab() {
 
   return (
     <div className="flex flex-col space-y-3 px-4 pt-4">
-      {/* Header Card */}
       <Card>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -387,7 +397,6 @@ export function CoachTab() {
           </div>
         </div>
 
-        {/* Mode Pills */}
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
           {MODES.map((m) => (
             <button
@@ -406,7 +415,6 @@ export function CoachTab() {
         </div>
       </Card>
 
-      {/* Suggested Prompts */}
       <div className="flex flex-wrap gap-1.5">
         {SUGGESTED_PROMPTS[mode].map((p) => (
           <button
@@ -421,7 +429,6 @@ export function CoachTab() {
         ))}
       </div>
 
-      {/* Fallback / Provider Notice */}
       {lastErrorNotice && (
         <div className="flex items-center justify-between gap-2 rounded-2xl border border-[#EAB765]/30 bg-[#EAB765]/10 px-3.5 py-2.5 text-xs text-[#EAB765]">
           <span>{lastErrorNotice}</span>
@@ -436,11 +443,10 @@ export function CoachTab() {
         </div>
       )}
 
-      {/* Chat Messages */}
       <div className="space-y-3">
         {messages.length === 0 && !isSending && (
           <div className="rounded-3xl border border-dashed border-[#303832] bg-[#171A18] p-5 text-center text-xs text-[#A1AAA3]">
-            Ask about your workouts, progressive overload, Bengali/Indian nutrition, weight trends, recovery readiness, or request a Weekly Fitness Analyst report.
+            Tell ApexFit Coach to log meals, edit/remove foods, log workout sets, swap exercises, or analyze your training, nutrition, and recovery.
           </div>
         )}
 
@@ -455,9 +461,7 @@ export function CoachTab() {
           >
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#727B74]">
-                {msg.role === 'user'
-                  ? 'You'
-                  : `${msg.providerUsed ?? 'ApexFit Coach'}`}
+                {msg.role === 'user' ? 'You' : `${msg.providerUsed ?? 'ApexFit Coach'}`}
               </span>
               {msg.role === 'assistant' && (
                 <button
@@ -490,17 +494,34 @@ export function CoachTab() {
               </div>
             )}
 
-            {msg.proposedAction && (
-              <div className="mt-3 border-t border-[#252B28] pt-2.5">
+            {/* Inline Apply / Cancel Confirmation Card */}
+            {msg.proposedAction && !dismissedActions[msg.id] && (
+              <div className="mt-3 rounded-2xl border border-[#303832] bg-[#171A18] p-2.5">
                 {msg.actionApplied ? (
                   <Badge tone="success">
                     <Check className="h-3 w-3" />
-                    Applied to Programs
+                    Applied
                   </Badge>
                 ) : (
-                  <Button size="sm" onClick={() => setPendingApplyMsg(msg)}>
-                    {msg.proposedAction.label}
-                  </Button>
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold text-[#F3F5F2]">
+                      {msg.proposedAction.label}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleApplyInlineAction(msg)}>
+                        Apply
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          setDismissedActions((p) => ({ ...p, [msg.id]: true }))
+                        }
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -512,7 +533,7 @@ export function CoachTab() {
             <div className="mb-1.5 flex items-center gap-2 text-[#B7F36B]">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span className="text-[10px] font-bold uppercase tracking-wider">
-                Analyzing stored logs &amp; memories...
+                Processing request...
               </span>
             </div>
             {streamingText && <FormattedCoachText text={streamingText} />}
@@ -520,7 +541,6 @@ export function CoachTab() {
         )}
       </div>
 
-      {/* Input Bar */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -532,7 +552,7 @@ export function CoachTab() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={`Ask ${mode} coach...`}
+          placeholder={`Ask or command ${mode} coach...`}
           className="min-h-[46px] flex-1 rounded-2xl border border-[#303832] bg-[#1D221F] px-3.5 text-sm text-[#F3F5F2] placeholder:text-[#727B74] focus:border-[#B7F36B] focus:outline-none"
         />
         <Button type="submit" disabled={!input.trim() || isSending}>
@@ -682,7 +702,7 @@ export function CoachTab() {
               <Input
                 value={memKey}
                 onChange={(e) => setMemKey(e.target.value)}
-                placeholder="Topic key (e.g. shoulder_note)"
+                placeholder="Topic key"
                 className="!min-h-[38px] text-xs"
               />
             </div>
@@ -691,7 +711,7 @@ export function CoachTab() {
                 type="text"
                 value={memContent}
                 onChange={(e) => setMemContent(e.target.value)}
-                placeholder="e.g. Prefers Bengali fish lunches & 45-min workouts"
+                placeholder="e.g. Prefers Bengali fish lunches"
                 className="min-h-[40px] flex-1 rounded-xl border border-[#303832] bg-[#171A18] px-3 text-xs text-[#F3F5F2]"
               />
               <Button type="submit" size="sm">
@@ -747,15 +767,6 @@ export function CoachTab() {
           </div>
         </div>
       </ModalShell>
-
-      <ConfirmDialog
-        isOpen={Boolean(pendingApplyMsg)}
-        title="Confirm Coach Modification"
-        description={`Allow ApexFit Coach to ${pendingApplyMsg?.proposedAction?.label ?? 'update your data'}?`}
-        confirmLabel="Apply Change"
-        onCancel={() => setPendingApplyMsg(null)}
-        onConfirm={handleConfirmApplyAction}
-      />
     </div>
   );
 }

@@ -103,6 +103,42 @@ export class ApexFitDB extends Dexie {
           }
         }
       });
+
+    this.version(4)
+      .stores({
+        profile: 'id',
+        exercises: 'id, name, muscleGroup',
+        routines: 'id, name, programType',
+        workoutSessions: 'id, routineId, startedAt',
+        foodLogs: 'id, date, mealSlot, createdAt',
+        customFoods: 'id, name, category',
+        savedMeals: 'id, name, isRecipe',
+        waterLogs: 'id, date, createdAt',
+        weightLogs: 'id, date',
+        measurements: 'id, date',
+        progressPhotos: 'id, date, pose',
+        recoveryLogs: 'id, date',
+        coachMessages: 'id, conversationId, mode, createdAt',
+        coachConversations: 'id, mode, updatedAt',
+        coachMemories: 'id, category, key, updatedAt',
+        syncQueue: 'id, entityType, entityId, status, updatedAt',
+      })
+      .upgrade(async (tx) => {
+        const profiles = await tx.table('profile').toArray();
+        const sessionsCount = await tx.table('workoutSessions').count();
+        const foodsCount = await tx.table('foodLogs').count();
+        for (const p of profiles) {
+          if (p.onboardingCompleted === undefined) {
+            await tx.table('profile').update(p.id, {
+              onboardingCompleted: p.sampleDataSeeded || sessionsCount > 0 || foodsCount > 0,
+              weeklyRateKg: p.weeklyRateKg ?? 0.25,
+              experienceLevel: p.experienceLevel ?? 'intermediate',
+              dietType: p.dietType ?? 'bengali_indian',
+              preferredWorkoutSplit: p.preferredWorkoutSplit ?? 'push_pull_legs',
+            });
+          }
+        }
+      });
   }
 }
 

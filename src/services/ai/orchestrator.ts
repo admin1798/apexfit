@@ -1,6 +1,10 @@
 import { db } from '../../db/database';
 import { DEFAULT_PROFILE_ID } from '../../db/seed';
 import { displayWeight, weightLabel } from '../units';
+import {
+  detectAndHandleMutationCommand,
+  type ActiveWorkoutBridge,
+} from './actionExecutor';
 import { extractAndStoreMemoryFromMessage, syncBaselineMemories } from './memoryService';
 import { retrieveRelevantContext } from './contextRetriever';
 import {
@@ -22,6 +26,10 @@ export interface OrchestratedCoachReply {
   contextUsed: string[];
   providerUsed: string;
   proposedAction?: CoachProposedAction;
+  immediateToast?: {
+    message: string;
+    undo: () => Promise<void>;
+  };
   errorNote?: string;
 }
 
@@ -235,6 +243,7 @@ export async function runCoachTurn(params: {
   conversationId: string;
   mode: CoachMode;
   userPrompt: string;
+  workoutBridge?: ActiveWorkoutBridge;
   onTokenChunk?: (partialText: string) => void;
 }): Promise<OrchestratedCoachReply> {
   const sessionToken = getOrCreateSessionToken();
@@ -244,7 +253,25 @@ export async function runCoachTurn(params: {
   await syncBaselineMemories();
   await extractAndStoreMemoryFromMessage(params.userPrompt);
 
-  // 2. Selective context retrieval based on question & mode
+  // 2. Check if prompt is a direct Dexie read/write action command (meals or workouts)
+  const actionOutcome = await detectAndHandleMutationCommand(
+    params.userPrompt,
+    params.workoutBridge
+  );
+  if (actionOutcome?.handled) {
+    if (params.onTokenChunk && actionOutcome.assistantContent) {
+      params.onTokenChunk(actionOutcome.assistantContent);
+    }
+    return {
+      content: actionOutcome.assistantContent,
+      contextUsed: actionOutcome.contextUsed,
+      providerUsed: actionOutcome.providerUsed,
+      proposedAction: actionOutcome.proposedAction,
+      immediateToast: actionOutcome.immediateToast,
+    };
+  }
+
+  // 3. Selective context retrieval based on question & mode
   const retrieved = await retrieveRelevantContext(auth, params.mode, params.userPrompt);
   const profile = await db.profile.get(DEFAULT_PROFILE_ID);
   const preferredProvider: AIProviderId = profile?.aiProvider ?? 'gemini';

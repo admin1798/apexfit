@@ -4,6 +4,7 @@ import type {
   BodyMeasurementEntry,
   Exercise,
   FoodLogEntry,
+  PreferredSplit,
   RecoveryLogEntry,
   Routine,
   SavedMeal,
@@ -667,6 +668,11 @@ export function createDefaultProfile(): UserProfile {
     goalWeightKg: 77.0,
     activityLevel: 'moderate',
     goal: 'lean_bulk',
+    weeklyRateKg: 0.25,
+    experienceLevel: 'intermediate',
+    dietType: 'bengali_indian',
+    preferredWorkoutSplit: 'push_pull_legs',
+    onboardingCompleted: true,
     unitSystem: 'metric',
     calorieTarget: targets.calorieTarget,
     proteinTarget: targets.proteinTarget,
@@ -1375,18 +1381,211 @@ function buildSampleNutritionAndHealth(todayKey: string): {
   return { foodLogs, waterLogs, weightLogs, measurements, recoveryLogs, savedMeals };
 }
 
+export function generateStarterRoutinesForSplit(
+  split: PreferredSplit,
+  trainingDaysPerWeek: number
+): Routine[] {
+  if (split === 'upper_lower') {
+    const upper = DEFAULT_ROUTINES.find((r) => r.id === 'routine-upper')!;
+    const lower = DEFAULT_ROUTINES.find((r) => r.id === 'routine-lower')!;
+    return [
+      { ...upper, scheduledWeekdays: trainingDaysPerWeek >= 4 ? [1, 4] : [1, 5] },
+      { ...lower, scheduledWeekdays: trainingDaysPerWeek >= 4 ? [2, 5] : [3] },
+    ];
+  }
+  if (split === 'full_body') {
+    const full = DEFAULT_ROUTINES.find((r) => r.id === 'routine-full')!;
+    const days = trainingDaysPerWeek >= 4 ? [1, 3, 5, 6] : [1, 3, 5];
+    return [
+      { ...full, id: 'routine-full-a', name: 'Full Body A (Squat & Press)', scheduledWeekdays: days },
+      {
+        ...full,
+        id: 'routine-full-b',
+        name: 'Full Body B (RDL & Pull)',
+        dayLabel: 'Full B',
+        accentColor: '#79B8F5',
+        items: [
+          { exerciseId: 'ex-rdl', defaultSets: 3, restSeconds: 120 },
+          { exerciseId: 'ex-incline-db-press', defaultSets: 3, restSeconds: 90 },
+          { exerciseId: 'ex-lat-pulldown', defaultSets: 3, restSeconds: 90 },
+          { exerciseId: 'ex-db-shoulder-press', defaultSets: 3, restSeconds: 90 },
+          { exerciseId: 'ex-hanging-leg-raise', defaultSets: 3, restSeconds: 60 },
+        ],
+        scheduledWeekdays: [],
+      },
+    ];
+  }
+  if (split === 'bro_split') {
+    return [
+      {
+        id: 'routine-bro-chest',
+        name: 'Chest & Triceps',
+        dayLabel: 'Chest/Tri',
+        programType: 'push',
+        scheduledWeekdays: [1],
+        accentColor: '#B7F36B',
+        items: [
+          { exerciseId: 'ex-bench-press', defaultSets: 4, restSeconds: 120 },
+          { exerciseId: 'ex-incline-db-press', defaultSets: 3, restSeconds: 90 },
+          { exerciseId: 'ex-cable-fly', defaultSets: 3, restSeconds: 60 },
+          { exerciseId: 'ex-tricep-pushdown', defaultSets: 3, restSeconds: 60 },
+          { exerciseId: 'ex-overhead-tricep-ext', defaultSets: 3, restSeconds: 60 },
+        ],
+      },
+      {
+        id: 'routine-bro-back',
+        name: 'Back & Biceps',
+        dayLabel: 'Back/Bi',
+        programType: 'pull',
+        scheduledWeekdays: [2],
+        accentColor: '#79B8F5',
+        items: [
+          { exerciseId: 'ex-lat-pulldown', defaultSets: 4, restSeconds: 90 },
+          { exerciseId: 'ex-barbell-row', defaultSets: 3, restSeconds: 120 },
+          { exerciseId: 'ex-seated-cable-row', defaultSets: 3, restSeconds: 90 },
+          { exerciseId: 'ex-barbell-curl', defaultSets: 3, restSeconds: 60 },
+          { exerciseId: 'ex-hammer-curl', defaultSets: 3, restSeconds: 60 },
+        ],
+      },
+      {
+        id: 'routine-bro-shoulders',
+        name: 'Shoulders & Core',
+        dayLabel: 'Shoulders',
+        programType: 'custom',
+        scheduledWeekdays: [4],
+        accentColor: '#75D69A',
+        items: [
+          { exerciseId: 'ex-ohp', defaultSets: 4, restSeconds: 120 },
+          { exerciseId: 'ex-lateral-raise', defaultSets: 4, restSeconds: 60 },
+          { exerciseId: 'ex-face-pull', defaultSets: 3, restSeconds: 60 },
+          { exerciseId: 'ex-hanging-leg-raise', defaultSets: 3, restSeconds: 60 },
+        ],
+      },
+      {
+        id: 'routine-bro-legs',
+        name: 'Legs Power',
+        dayLabel: 'Legs',
+        programType: 'legs',
+        scheduledWeekdays: [5],
+        accentColor: '#EAB765',
+        items: [
+          { exerciseId: 'ex-squat', defaultSets: 4, restSeconds: 180 },
+          { exerciseId: 'ex-rdl', defaultSets: 3, restSeconds: 120 },
+          { exerciseId: 'ex-leg-press', defaultSets: 3, restSeconds: 90 },
+          { exerciseId: 'ex-leg-curl', defaultSets: 3, restSeconds: 60 },
+          { exerciseId: 'ex-standing-calf-raise', defaultSets: 3, restSeconds: 60 },
+        ],
+      },
+    ];
+  }
+  // Default: Push / Pull / Legs
+  const ppl = DEFAULT_ROUTINES.slice(0, 3);
+  return ppl.map((r, idx) => ({
+    ...r,
+    scheduledWeekdays:
+      trainingDaysPerWeek >= 6
+        ? [idx + 1, idx + 4]
+        : trainingDaysPerWeek >= 4 && idx === 0
+          ? [1, 5]
+          : [idx + 1],
+  }));
+}
+
+export async function completeOnboardingWithProfile(
+  userProfile: UserProfile,
+  mode: 'fresh' | 'demo'
+): Promise<void> {
+  const todayKey = toLocalDateKey(new Date());
+  const starterRoutines = generateStarterRoutinesForSplit(
+    userProfile.preferredWorkoutSplit ?? 'push_pull_legs',
+    userProfile.trainingDaysPerWeek ?? 4
+  );
+
+  if (mode === 'demo') {
+    await resetToSampleData();
+    await db.profile.put({
+      ...userProfile,
+      id: DEFAULT_PROFILE_ID,
+      onboardingCompleted: true,
+      sampleDataSeeded: true,
+    });
+    await db.routines.bulkPut(starterRoutines);
+    return;
+  }
+
+  await db.transaction(
+    'rw',
+    [
+      db.profile,
+      db.exercises,
+      db.routines,
+      db.workoutSessions,
+      db.foodLogs,
+      db.customFoods,
+      db.savedMeals,
+      db.waterLogs,
+      db.weightLogs,
+      db.measurements,
+      db.progressPhotos,
+      db.recoveryLogs,
+      db.coachMessages,
+      db.coachConversations,
+      db.coachMemories,
+      db.syncQueue,
+    ],
+    async () => {
+      await Promise.all([
+        db.workoutSessions.clear(),
+        db.foodLogs.clear(),
+        db.customFoods.clear(),
+        db.savedMeals.clear(),
+        db.waterLogs.clear(),
+        db.weightLogs.clear(),
+        db.measurements.clear(),
+        db.progressPhotos.clear(),
+        db.recoveryLogs.clear(),
+        db.coachMessages.clear(),
+        db.coachConversations.clear(),
+        db.coachMemories.clear(),
+        db.syncQueue.clear(),
+        db.routines.clear(),
+      ]);
+      await db.profile.put({
+        ...userProfile,
+        id: DEFAULT_PROFILE_ID,
+        onboardingCompleted: true,
+        sampleDataSeeded: false,
+      });
+      await db.exercises.bulkPut(BUILTIN_EXERCISES);
+      await db.routines.bulkPut(starterRoutines);
+      await db.weightLogs.put({
+        id: `wt-${todayKey}`,
+        date: todayKey,
+        weightKg: userProfile.weightKg,
+        note: 'Starting weight',
+      });
+    }
+  );
+}
+
 export async function ensureDatabaseSeeded(): Promise<void> {
   const existingProfile = await db.profile.get(DEFAULT_PROFILE_ID);
   if (existingProfile) {
-    // Upgrade v1 profiles smoothly to v2 fields without wiping user data
+    // Upgrade v1/v2/v3 profiles smoothly without wiping user data
     const defaults = createDefaultProfile();
     const needsUpgrade =
       existingProfile.unitSystem === undefined ||
       existingProfile.dashboardWidgets === undefined ||
-      existingProfile.fiberTarget === undefined;
+      existingProfile.fiberTarget === undefined ||
+      existingProfile.onboardingCompleted === undefined;
 
     if (needsUpgrade) {
       await db.profile.update(DEFAULT_PROFILE_ID, {
+        onboardingCompleted: existingProfile.onboardingCompleted ?? true,
+        weeklyRateKg: existingProfile.weeklyRateKg ?? defaults.weeklyRateKg,
+        experienceLevel: existingProfile.experienceLevel ?? defaults.experienceLevel,
+        dietType: existingProfile.dietType ?? defaults.dietType,
+        preferredWorkoutSplit: existingProfile.preferredWorkoutSplit ?? defaults.preferredWorkoutSplit,
         unitSystem: existingProfile.unitSystem ?? defaults.unitSystem,
         goalWeightKg: existingProfile.goalWeightKg ?? defaults.goalWeightKg,
         fiberTarget: existingProfile.fiberTarget ?? defaults.fiberTarget,
@@ -1402,7 +1601,6 @@ export async function ensureDatabaseSeeded(): Promise<void> {
       });
     }
 
-    // Refresh built-in exercise metadata (instructions, cues, alternatives) while preserving custom exercises
     const customExercises = (await db.exercises.toArray()).filter((e) => e.isCustom);
     await db.exercises.bulkPut([...BUILTIN_EXERCISES, ...customExercises]);
 
@@ -1417,7 +1615,11 @@ export async function ensureDatabaseSeeded(): Promise<void> {
     return;
   }
 
-  await resetToSampleData();
+  // First launch: ensure exercise library is ready, and let OnboardingWizard create the profile
+  const exCount = await db.exercises.count();
+  if (exCount === 0) {
+    await db.exercises.bulkPut(BUILTIN_EXERCISES);
+  }
 }
 
 export async function resetToSampleData(): Promise<void> {
