@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --color-apex-bg: #101211;
+  --color-apex-secondary: #171A18;
+  --color-apex-card: #1D221F;
+  --color-apex-elevated: #252B27;
+  --color-apex-lime: #B7F36B;
+  --color-apex-lime-hover: #C9FF85;
+  --color-apex-lime-dark: #8FC64D;
+  --color-apex-text: #F3F5F2;
+  --color-apex-text-secondary: #A1AAA3;
+  --color-apex-text-muted: #727B74;
+  --color-apex-border: #303832;
+  --color-apex-border-subtle: #252B28;
+  --color-apex-success: #75D69A;
+  --color-apex-warning: #EAB765;
+  --color-apex-danger: #E87979;
+  --color-apex-info: #79B8F5;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --bg-main: #101211;
+    --bg-secondary: #171A18;
+    --bg-card: #1D221F;
+    --bg-elevated: #252B27;
+    --accent-lime: #B7F36B;
+    --accent-hover: #C9FF85;
+    --accent-dark: #8FC64D;
+    --text-primary: #F3F5F2;
+    --text-secondary: #A1AAA3;
+    --text-muted: #727B74;
+    --border-primary: #303832;
+    --border-subtle: #252B28;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #101211;
+    color: #F3F5F2;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100dvh;
+    width: 100%;
+    background-color: #101211;
+  }
+
+  input[type="number"],
+  input[inputmode="decimal"],
+  input[inputmode="numeric"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+.pt-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.pb-nav-safe {
+  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #303832;
+  border-radius: 9999px;
+}
